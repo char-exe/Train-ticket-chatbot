@@ -1,0 +1,241 @@
+{% extends "layout.html" %}
+
+<!-- Creating the html body using jinja -->
+{% block body %}
+	<div class="message-box">
+
+		<div>
+
+			<!-- This div will contain the chat history -->
+	        <div class="conversation-box"></div>
+
+			<!-- Text input form, where user can type a message and auto-completion takes place -->
+		    <form method="POST" autocomplete="off">
+
+				<!-- Text box -->
+				<input type='text' class='text-msg' id="autocomplete" placeholder='Write here...'/>
+
+				<!-- Submit button -->
+				<button type="submit" class="send">
+
+					<img src="/static/images/send.svg" alt="Submit">
+
+				</button>
+
+			</form>
+
+		</div>
+
+	</div>
+
+{% endblock %}
+
+
+<!-- JavaScript files -->
+{% block scripts %}
+
+	<!-- Import JQuery -->
+	<script src="static/scripts/jquery-3.2.1.min.js"></script>
+
+	<!-- Import SocketIO client bundle  -->
+    <script src="static/scripts/socket.min.js"></script>
+
+	<!-- Handling SocketIO messages -->
+	<script src="static/scripts/message_handling.js"></script>
+
+	<!-- Auto-complete JavaScript function -->
+	<!-- Used tutorial: https://www.w3schools.com/howto/howto_js_autocomplete.asp -->
+	<script type="text/javascript">
+
+		// Takes current user input and possible auto-complete values
+		function autocomplete(user_input, initial_array) {
+
+			let current_focus;
+
+			// Executes following function when user types in input box
+			user_input.addEventListener('input', function() {
+
+				let autocomplete_list, possible_phrase, i, value = this.value;
+
+				// Close dropdown currently displayed (if any)
+				close_autocomplete_list();
+
+				// Returns false if input box empty
+				if(!value) {
+					return false;
+				}
+				current_focus = -1;
+
+				// Creates a DIV element that will contain possible auto-completion options
+				autocomplete_list = document.createElement('DIV');
+				autocomplete_list.setAttribute('id', this.id + 'autocomplete-list');
+				autocomplete_list.setAttribute('class', 'autocomplete-items');
+
+				// Appends 'autocomplete_list' as a child of the autocomplete box
+				this.parentNode.appendChild(autocomplete_list);
+
+				// Goes through every possible phrases and matches the start of them to the user input
+				// If the user input starts with the same letters as the phrase, it will be added to the auto-completion
+				// list
+				for(i = 0; i < initial_array.length; i++) {
+
+					// Checks if user input is the same as the start of current phrase
+					if(initial_array[i].substr(0, value.length).toUpperCase() === value.toUpperCase()) {
+
+						// Creates DIV element for 'matching' phrase
+						possible_phrase = document.createElement('DIV');
+
+						// Makes the starting matching letters bold
+						possible_phrase.innerHTML = '<strong>' + initial_array[i].substr(0, value.length) + '</strong>';
+						// Adds the rest of the phrase
+						possible_phrase.innerHTML += initial_array[i].substr(value.length);
+
+						// Inserts hidden input value that will be used if user selects this option
+						possible_phrase.innerHTML += "<input type='hidden' value='" + initial_array[i] + "'>";
+
+						// Executes following function when this particular is selected from the dropdown menu
+						possible_phrase.addEventListener('click', function() {
+
+							// Completes the user's input in the text box if this phrase is selected
+							user_input.value = this.getElementsByTagName('input')[0].value;
+
+							// Closes the auto-complete list of possible phrases (not needed anymore)
+							close_autocomplete_list();
+
+						});
+
+						// Adds possible phrase to auto-complete list
+						autocomplete_list.appendChild(possible_phrase);
+					}
+				}
+		});
+
+		// Executes following function when user presses their keyboard
+		user_input.addEventListener('keydown', function(e) {
+
+			let x = document.getElementById(this.id + 'autocomplete-list');
+
+			if(x) {
+				x = x.getElementsByTagName('div');
+			}
+
+			// If DOWN key is pressed, increase current focus by 1 (place in the list)
+			if(e.keyCode === 40) {
+				current_focus++;
+
+				// Make current item more visible
+				add_active(x);
+
+			// If UP key is pressed, decrease current focus by 1
+			} else if(e.keyCode === 38) {
+				current_focus--;
+
+				// Make current item more visible
+				add_active(x);
+
+			// If ENTER key is pressed, prevent form from being submitted, and do a click action on the currently active
+			// item
+			} else if(e.keyCode === 13) {
+				if(current_focus > -1) {
+					if(x) x[current_focus].click();
+				}
+			}
+		});
+
+		// Custom 'active item' css class
+		function add_active(x) {
+
+			if(!x) return false;
+
+			// Remove any current 'active' class from items
+			remove_active(x);
+
+			// If current focus is bigger or equal to item length, set current focus to 0 (start of autocomplete list)
+			if(current_focus >= x.length) current_focus = 0;
+
+			// If current focus is smaller than 0, set current focus to last item of x (last item of autocomplete list)
+			if(current_focus < 0) current_focus = (x.length - 1);
+
+				// Add css class 'autocomplete-active' to element
+				x[current_focus].classList.add('autocomplete-active');
+
+		}
+
+		// Removes css class 'autocomplete-active' from all autocomplete items
+		function remove_active(x) {
+
+			for(let i = 0; i < x.length; i++) x[i].classList.remove('autocomplete-active');
+
+		}
+
+		// Closes autocomplete list, except element given (if any)
+		function close_autocomplete_list(el) {
+
+			const x = document.getElementsByClassName('autocomplete-items');
+
+			let i;
+			for(i = 0; i < x.length; i++) {
+				if(el !== x[i] && el !== user_input) x[i].parentNode.removeChild(x[i]);
+			}
+		}
+
+		// Closes auto-complete list when user clicks anywhere on the document
+		document.addEventListener('click', function (e) {
+
+			close_autocomplete_list(e.target);
+
+		});
+
+		}
+
+		// When document loads this function will get all of the station names and codes and append it to the
+		// auto-complete phrases array
+		document.addEventListener('DOMContentLoaded', function(){
+
+			// Common phrases that the chatbot understands
+			let possible_words = ['bookings', 'booking', 'book', 'delays', 'delay', 'today', 'tomorrow', 'midday',
+				'midnight', 'yes', 'no'];
+
+			// Gets full station names
+			const station_names = '{{ stations[0] | tojson }}'.split(',');
+			// Gets station codes
+			const station_codes = '{{ stations[1] | tojson }}'.split(',');
+
+			let i;
+
+			// Gets user input box
+			const auto_complete_box = document.getElementById('autocomplete');
+
+			// Goes through every station and adds it to 'possible_words' (slices '[', '"' and ']' from json conversion)
+			for(i = 0; i < station_names.length; i++) {
+				if(i===0){
+					possible_words.push(station_names[i].slice(2,-1))
+
+				} else if(i===station_names.length-1){
+					possible_words.push(station_names[i].slice(2,-2))
+
+				} else {
+					possible_words.push(station_names[i].slice(2, -1));
+				}
+			}
+
+			// Goes through every code and adds it to 'possible_words' (slices '[', '"' and ']' from json conversion)
+			for(i = 0; i < station_codes.length; i++) {
+				if(i===0){
+					possible_words.push(station_codes[i].slice(2,-1))
+
+				} else if(i===station_codes.length-1){
+					possible_words.push(station_codes[i].slice(2,-2))
+
+				} else {
+					possible_words.push(station_codes[i].slice(2, -1));
+				}
+			}
+
+			// Adds common key words and station possible_words to possible auto-completion array
+			autocomplete(auto_complete_box, possible_words);
+
+		});
+	</script>
+
+{% endblock %}
